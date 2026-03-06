@@ -313,6 +313,44 @@ const OrbitingPlanet: React.FC<{
     () => (spec.ring ? buildRingTexture(hashString(`${spec.id}-ring`)) : null),
     [spec.id, spec.ring]
   );
+  const materialProfile = useMemo(() => {
+    if (spec.surface === 'gas') {
+      return {
+        roughness: 0.56,
+        metalness: 0.02,
+        clearcoat: 0.28,
+        clearcoatRoughness: 0.62,
+        transmission: 0.03,
+        thickness: 0.12,
+        ior: 1.18,
+        bumpScale: 0.02,
+      };
+    }
+
+    if (spec.surface === 'ice') {
+      return {
+        roughness: 0.64,
+        metalness: 0.04,
+        clearcoat: 0.52,
+        clearcoatRoughness: 0.26,
+        transmission: 0.14,
+        thickness: 0.24,
+        ior: 1.3,
+        bumpScale: 0.055,
+      };
+    }
+
+    return {
+      roughness: 0.83,
+      metalness: 0.05,
+      clearcoat: 0.18,
+      clearcoatRoughness: 0.5,
+      transmission: 0.01,
+      thickness: 0.08,
+      ior: 1.24,
+      bumpScale: 0.07,
+    };
+  }, [spec.surface]);
 
   useEffect(() => {
     return () => {
@@ -357,15 +395,36 @@ const OrbitingPlanet: React.FC<{
         <Float speed={1.2} rotationIntensity={0.18} floatIntensity={0.14}>
           <mesh ref={planetRef}>
             <sphereGeometry args={[spec.size, 64, 64]} />
-            <meshStandardMaterial
+            <meshPhysicalMaterial
               map={textures.map}
               bumpMap={textures.bumpMap}
-              bumpScale={spec.surface === 'gas' ? 0.02 : 0.06}
+              bumpScale={materialProfile.bumpScale}
+              normalMap={textures.bumpMap}
+              normalScale={new THREE.Vector2(0.45, 0.45)}
               roughnessMap={textures.roughnessMap}
-              roughness={spec.surface === 'gas' ? 0.75 : 0.88}
-              metalness={0.03}
+              roughness={materialProfile.roughness}
+              metalness={materialProfile.metalness}
+              clearcoat={materialProfile.clearcoat}
+              clearcoatRoughness={materialProfile.clearcoatRoughness}
+              transmission={materialProfile.transmission}
+              thickness={materialProfile.thickness}
+              ior={materialProfile.ior}
+              reflectivity={0.6}
             />
           </mesh>
+
+          {(spec.id === 'earth' || spec.id === 'venus') && (
+            <mesh scale={1.05}>
+              <sphereGeometry args={[spec.size, 42, 42]} />
+              <meshBasicMaterial
+                color={spec.id === 'earth' ? '#7ec3ff' : '#ffd2a1'}
+                transparent
+                opacity={0.12}
+                blending={THREE.AdditiveBlending}
+                side={THREE.BackSide}
+              />
+            </mesh>
+          )}
 
           {spec.ring && ringTexture && (
             <mesh rotation={[Math.PI / 2.4, 0, 0]}>
@@ -374,11 +433,11 @@ const OrbitingPlanet: React.FC<{
                 map={ringTexture}
                 color="#c7b188"
                 emissive="#8d7f66"
-                emissiveIntensity={0.08}
+                emissiveIntensity={0.13}
                 transparent
-                opacity={0.8}
+                opacity={0.88}
                 side={THREE.DoubleSide}
-                roughness={0.9}
+                roughness={0.78}
                 metalness={0.05}
                 alphaTest={0.07}
               />
@@ -475,6 +534,8 @@ const AsteroidBelt: React.FC<{ density: number }> = ({ density }) => {
 
 const SolarSystem: React.FC<{ complexity: number }> = ({ complexity }) => {
   const rootRef = useRef<THREE.Group>(null);
+  const sunRef = useRef<THREE.Mesh>(null);
+  const sunHaloRef = useRef<THREE.Mesh>(null);
   const normalizedComplexity = THREE.MathUtils.clamp((complexity - 1) / 3, 0, 1);
   const speedMultiplier = 0.45 + normalizedComplexity * 0.9;
 
@@ -497,6 +558,16 @@ const SolarSystem: React.FC<{ complexity: number }> = ({ complexity }) => {
     state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, state.pointer.x * 1.15, 0.035);
     state.camera.position.y = THREE.MathUtils.lerp(state.camera.position.y, 1.4 + state.pointer.y * 0.55, 0.035);
     state.camera.lookAt(0, 0, 0);
+
+    if (sunRef.current) {
+      const material = sunRef.current.material as THREE.MeshStandardMaterial;
+      material.emissiveIntensity = 2.05 + Math.sin(elapsed * 1.7) * 0.15;
+    }
+
+    if (sunHaloRef.current) {
+      const pulse = 1.15 + Math.sin(elapsed * 1.4) * 0.02;
+      sunHaloRef.current.scale.setScalar(pulse);
+    }
   });
 
   return (
@@ -504,18 +575,18 @@ const SolarSystem: React.FC<{ complexity: number }> = ({ complexity }) => {
       <Starfield count={700} radius={45} color="#9ec7ff" size={0.06} />
       <Starfield count={350} radius={35} color="#d7efff" size={0.045} />
 
-      <mesh>
+      <mesh ref={sunRef}>
         <sphereGeometry args={[1.05, 96, 96]} />
         <meshStandardMaterial
           color="#ffbb44"
           emissive="#ff6e1c"
-          emissiveIntensity={2.1}
-          roughness={0.72}
+          emissiveIntensity={2.05}
+          roughness={0.6}
           metalness={0.02}
         />
       </mesh>
 
-      <mesh scale={1.18}>
+      <mesh ref={sunHaloRef} scale={1.16}>
         <sphereGeometry args={[1.05, 64, 64]} />
         <meshBasicMaterial color="#ffb155" transparent opacity={0.12} side={THREE.BackSide} />
       </mesh>
@@ -547,6 +618,11 @@ const HeroThreeBackground: React.FC<HeroThreeBackgroundProps> = ({ complexity })
           gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
           camera={{ position: [0, 1.4, 14.2], fov: 38 }}
           style={{ pointerEvents: 'none' }}
+          onCreated={({ gl }) => {
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+            gl.toneMapping = THREE.ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.05;
+          }}
         >
           <AdaptiveDpr pixelated />
           <ambientLight intensity={0.16} color="#7aa7dd" />
