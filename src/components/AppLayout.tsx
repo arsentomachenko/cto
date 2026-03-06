@@ -14,10 +14,12 @@ import Footer from './portfolio/Footer';
 import GradientOrbs from './portfolio/GradientOrbs';
 import ScrollProgress from './portfolio/ScrollProgress';
 import BackToTop from './portfolio/BackToTop';
+import CustomCursor from './portfolio/CustomCursor';
 
 const AppLayout: React.FC = () => {
   return (
     <div className="relative min-h-screen noise-overlay">
+      <CustomCursor />
       <ScrollProgress />
       <GradientOrbs />
       <Header />

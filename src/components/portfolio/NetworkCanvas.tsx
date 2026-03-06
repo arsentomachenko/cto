@@ -24,9 +24,14 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
   const nodesRef = useRef<Node[]>([]);
   const animFrameRef = useRef<number>(0);
   const isDarkRef = useRef(false);
+  const lowPowerRef = useRef(false);
 
   const createNodes = useCallback((width: number, height: number, comp: number) => {
-    const nodeCount = Math.floor(40 + comp * 40);
+    const lowPower = lowPowerRef.current;
+    const nodeCount = lowPower
+      ? Math.floor(18 + comp * 18)
+      : Math.floor(40 + comp * 40);
+    const maxConnectionDistance = lowPower ? 140 : 180;
     const nodes: Node[] = [];
     for (let i = 0; i < nodeCount; i++) {
       const baseRadius = 1.5 + Math.random() * 2.5;
@@ -49,7 +54,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
         const dx = nodes[i].x - nodes[j].x;
         const dy = nodes[i].y - nodes[j].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 180) {
+        if (dist < maxConnectionDistance) {
           nodes[i].connections.push(j);
         }
       }
@@ -67,14 +72,35 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = canvas.offsetWidth * dpr;
       canvas.height = canvas.offsetHeight * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       nodesRef.current = createNodes(canvas.offsetWidth, canvas.offsetHeight, complexity);
     };
 
     resize();
     window.addEventListener('resize', resize);
 
+    const reducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const mobileMedia = window.matchMedia('(max-width: 767px)');
+    const coarsePointerMedia = window.matchMedia('(pointer: coarse)');
+
+    const updatePowerMode = () => {
+      const nextLowPower =
+        reducedMotionMedia.matches || mobileMedia.matches || coarsePointerMedia.matches;
+      if (nextLowPower !== lowPowerRef.current) {
+        lowPowerRef.current = nextLowPower;
+        resize();
+      } else {
+        lowPowerRef.current = nextLowPower;
+      }
+    };
+
+    updatePowerMode();
+    reducedMotionMedia.addEventListener('change', updatePowerMode);
+    mobileMedia.addEventListener('change', updatePowerMode);
+    coarsePointerMedia.addEventListener('change', updatePowerMode);
+
     const handleMouseMove = (e: MouseEvent) => {
+      if (lowPowerRef.current) return;
       const rect = canvas.getBoundingClientRect();
       mouseRef.current = {
         x: (e.clientX - rect.left) / rect.width,
@@ -90,7 +116,15 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
     const observer = new MutationObserver(checkDark);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
-    const animate = () => {
+    let lastFrameTime = 0;
+
+    const animate = (timestamp = 0) => {
+      if (lowPowerRef.current && timestamp - lastFrameTime < 33) {
+        animFrameRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime = timestamp;
+
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
       ctx.clearRect(0, 0, w, h);
@@ -99,6 +133,8 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
       const mx = mouseRef.current.x * w;
       const my = mouseRef.current.y * h;
       const dark = isDarkRef.current;
+      const lowPower = lowPowerRef.current;
+      const maxConnectionDistance = lowPower ? 140 : 180;
 
       // Update nodes
       for (const node of nodes) {
@@ -109,7 +145,7 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
         const dx = node.x - mx;
         const dy = node.y - my;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 200) {
+        if (!lowPower && dist < 200 && dist > 0) {
           const force = (200 - dist) / 200 * 0.5;
           node.vx += (dx / dist) * force;
           node.vy += (dy / dist) * force;
@@ -137,8 +173,8 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
           const dx = node.x - other.x;
           const dy = node.y - other.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 180) {
-            const alpha = (1 - dist / 180) * 0.3 * node.z;
+          if (dist < maxConnectionDistance) {
+            const alpha = (1 - dist / maxConnectionDistance) * 0.3 * node.z;
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
             ctx.lineTo(other.x, other.y);
@@ -179,24 +215,26 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
       }
 
       // Draw energy pulses along connections
-      const time = Date.now() * 0.001;
-      for (let i = 0; i < Math.min(nodes.length, 20); i++) {
-        const node = nodes[i];
-        if (node.connections.length === 0) continue;
-        const j = node.connections[Math.floor(time * 0.5 + i) % node.connections.length];
-        const other = nodes[j];
-        const t = (Math.sin(time * 2 + i) + 1) / 2;
-        const px = node.x + (other.x - node.x) * t;
-        const py = node.y + (other.y - node.y) * t;
-        
-        ctx.beginPath();
-        ctx.arc(px, py, 2, 0, Math.PI * 2);
-        if (dark) {
-          ctx.fillStyle = `rgba(45, 212, 191, ${0.6 * node.z})`;
-        } else {
-          ctx.fillStyle = `rgba(45, 212, 191, ${0.4 * node.z})`;
+      if (!lowPower) {
+        const time = Date.now() * 0.001;
+        for (let i = 0; i < Math.min(nodes.length, 20); i++) {
+          const node = nodes[i];
+          if (node.connections.length === 0) continue;
+          const j = node.connections[Math.floor(time * 0.5 + i) % node.connections.length];
+          const other = nodes[j];
+          const t = (Math.sin(time * 2 + i) + 1) / 2;
+          const px = node.x + (other.x - node.x) * t;
+          const py = node.y + (other.y - node.y) * t;
+
+          ctx.beginPath();
+          ctx.arc(px, py, 2, 0, Math.PI * 2);
+          if (dark) {
+            ctx.fillStyle = `rgba(45, 212, 191, ${0.6 * node.z})`;
+          } else {
+            ctx.fillStyle = `rgba(45, 212, 191, ${0.4 * node.z})`;
+          }
+          ctx.fill();
         }
-        ctx.fill();
       }
 
       animFrameRef.current = requestAnimationFrame(animate);
@@ -208,6 +246,9 @@ const NetworkCanvas: React.FC<NetworkCanvasProps> = ({ complexity = 1, className
       cancelAnimationFrame(animFrameRef.current);
       window.removeEventListener('resize', resize);
       canvas.removeEventListener('mousemove', handleMouseMove);
+      reducedMotionMedia.removeEventListener('change', updatePowerMode);
+      mobileMedia.removeEventListener('change', updatePowerMode);
+      coarsePointerMedia.removeEventListener('change', updatePowerMode);
       observer.disconnect();
     };
   }, [complexity, createNodes]);

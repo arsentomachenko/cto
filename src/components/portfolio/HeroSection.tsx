@@ -1,11 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Play, Users, Zap } from 'lucide-react';
-import NetworkCanvas from './NetworkCanvas';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { usePrefersReducedMotion } from '@/hooks/use-reduced-motion';
+import { useWebGLSupport } from '@/hooks/use-webgl-support';
+
+const LazyHeroThreeBackground = React.lazy(() => import('./three/HeroThreeBackground'));
+
+const headlineLines = [
+  'I help founders scale',
+  'from chaos to clarity',
+  'without burning out',
+  'or breaking the bank.',
+];
 
 const HeroSection: React.FC = () => {
   const [scaleValue, setScaleValue] = useState(1000);
   const [textRevealed, setTextRevealed] = useState(false);
   const [complexity, setComplexity] = useState(1);
+  const isMobile = useIsMobile();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const webglSupported = useWebGLSupport();
 
   useEffect(() => {
     const timer = setTimeout(() => setTextRevealed(true), 300);
@@ -36,13 +50,30 @@ const HeroSection: React.FC = () => {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const showInteractiveNetwork = useMemo(
+    () => webglSupported && !isMobile && !prefersReducedMotion,
+    [webglSupported, isMobile, prefersReducedMotion]
+  );
+
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
       {/* Network background */}
       <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-[#0A1929] dark:via-[#0d2137] dark:to-[#0A1929]">
-        <NetworkCanvas complexity={complexity} />
+        {showInteractiveNetwork ? (
+          <Suspense fallback={<div className="absolute inset-0 bg-slate-100/40 dark:bg-[#0A1929]/40" />}>
+            <LazyHeroThreeBackground complexity={complexity} />
+          </Suspense>
+        ) : (
+          <div
+            className="absolute inset-0 opacity-80"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 20% 20%, rgba(59,130,246,0.18), transparent 42%), radial-gradient(circle at 80% 75%, rgba(45,212,191,0.18), transparent 48%), linear-gradient(to bottom, rgba(148,163,184,0.08), transparent)',
+            }}
+          />
+        )}
         {/* Gradient overlay for readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/80 via-white/50 to-transparent dark:from-[#0A1929]/80 dark:via-[#0A1929]/50 dark:to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/55 to-transparent dark:from-[#0A1929]/85 dark:via-[#0A1929]/60 dark:to-transparent" />
       </div>
 
       {/* Floating gradient orbs */}
@@ -66,8 +97,8 @@ const HeroSection: React.FC = () => {
             </div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold leading-[1.1] tracking-tight text-gray-900 dark:text-white mb-6">
-              {['I help founders', 'scale from', 'chaos to clarity'].map((line, i) => (
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-extrabold leading-[1.05] tracking-tight text-gray-900 dark:text-white mb-6">
+              {headlineLines.map((line, i) => (
                 <span
                   key={i}
                   className={`block transition-all duration-700 ${
@@ -75,9 +106,9 @@ const HeroSection: React.FC = () => {
                       ? 'opacity-100 translate-y-0'
                       : 'opacity-0 translate-y-8'
                   }`}
-                  style={{ transitionDelay: `${300 + i * 150}ms` }}
+                  style={{ transitionDelay: `${300 + i * 130}ms` }}
                 >
-                  {i === 2 ? (
+                  {i === 1 ? (
                     <span className="gradient-text">{line}</span>
                   ) : (
                     line
@@ -88,19 +119,21 @@ const HeroSection: React.FC = () => {
 
             {/* Subheadline */}
             <p
-              className={`text-lg sm:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mb-10 leading-relaxed transition-all duration-700 delay-700 ${
+              className={`text-lg sm:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mb-10 leading-relaxed transition-all duration-700 ${
                 textRevealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
               }`}
+              style={{ transitionDelay: '700ms' }}
             >
-              I fix broken codebases, eliminate bottlenecks, and help startups build{' '}
-              <span className="font-semibold text-blue-600 dark:text-blue-400">3x faster</span> using AI—without burning out or breaking the bank.
+              Fractional CTO & Fullstack Engineer. I fix broken codebases, eliminate bottlenecks, and help startups build{' '}
+              <span className="font-semibold text-blue-600 dark:text-blue-400">3x faster</span> using AI.
             </p>
 
             {/* CTAs */}
             <div
-              className={`flex flex-wrap gap-4 mb-12 transition-all duration-700 delay-[900ms] ${
+              className={`flex flex-wrap gap-4 mb-12 transition-all duration-700 ${
                 textRevealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
               }`}
+              style={{ transitionDelay: '900ms' }}
             >
               <button
                 onClick={() => scrollTo('#case-studies')}
@@ -120,16 +153,17 @@ const HeroSection: React.FC = () => {
 
             {/* Credibility badges */}
             <div
-              className={`flex flex-wrap gap-6 transition-all duration-700 delay-[1100ms] ${
+              className={`flex flex-wrap gap-6 transition-all duration-700 ${
                 textRevealed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
               }`}
+              style={{ transitionDelay: '1100ms' }}
             >
               <div className="flex items-center gap-2 animate-bounce-gentle">
                 <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
                   <Users className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-gray-900 dark:text-white">5+ Startups</div>
+                  <div className="text-sm font-bold text-gray-900 dark:text-white">Startups scaled: 5+</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Scaled Successfully</div>
                 </div>
               </div>
@@ -147,9 +181,10 @@ const HeroSection: React.FC = () => {
 
           {/* Right - Scale Simulator */}
           <div
-            className={`lg:col-span-2 transition-all duration-1000 delay-[600ms] ${
+            className={`lg:col-span-2 transition-all duration-1000 ${
               textRevealed ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'
             }`}
+            style={{ transitionDelay: '600ms' }}
           >
             <div className="relative p-6 sm:p-8 rounded-2xl bg-white/80 dark:bg-white/5 backdrop-blur-xl border border-gray-200/50 dark:border-white/10 shadow-2xl shadow-black/5 dark:shadow-blue-500/5">
               <div className="absolute -top-3 -right-3 px-3 py-1 bg-gradient-to-r from-blue-600 to-teal-500 text-white text-xs font-bold rounded-full shadow-lg">

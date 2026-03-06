@@ -1,7 +1,26 @@
-import React, { useEffect } from 'react';
+import React, { Suspense, useEffect, useMemo } from 'react';
 import { Github, Linkedin, Twitter, Mail, ExternalLink, Zap } from 'lucide-react';
+import { useInView } from '@/hooks/useInView';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { usePrefersReducedMotion } from '@/hooks/use-reduced-motion';
+import { useWebGLSupport } from '@/hooks/use-webgl-support';
+
+const LazyFooterGeoShape = React.lazy(() => import('./three/FooterGeoShape'));
 
 const Footer: React.FC = () => {
+  const { ref: shapeRef, isInView: shapeVisible } = useInView({
+    threshold: 0.05,
+    rootMargin: '200px 0px',
+    triggerOnce: true,
+  });
+  const isMobile = useIsMobile();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const webglSupported = useWebGLSupport();
+  const show3DShape = useMemo(
+    () => webglSupported && shapeVisible && !isMobile && !prefersReducedMotion,
+    [webglSupported, shapeVisible, isMobile, prefersReducedMotion]
+  );
+
   // Console Easter egg
   useEffect(() => {
     console.log(
@@ -58,10 +77,24 @@ const Footer: React.FC = () => {
 
             {/* Animated geometric shape */}
             <div className="inline-flex items-center gap-3">
-              <div className="relative w-8 h-8">
-                <div className="absolute inset-0 border border-blue-500/30 rounded-lg animate-spin-slow" />
-                <div className="absolute inset-1 border border-teal-500/30 rounded-md animate-spin-slow" style={{ animationDirection: 'reverse', animationDuration: '15s' }} />
-                <div className="absolute inset-2 bg-blue-500/20 rounded-sm animate-pulse" />
+              <div ref={shapeRef} className="relative w-9 h-9">
+                {show3DShape ? (
+                  <Suspense
+                    fallback={
+                      <div className="relative w-9 h-9">
+                        <div className="absolute inset-0 border border-blue-500/30 rounded-full animate-spin-slow" />
+                        <div className="absolute inset-1 border border-teal-500/30 rounded-full animate-spin-slow" style={{ animationDirection: 'reverse', animationDuration: '15s' }} />
+                      </div>
+                    }
+                  >
+                    <LazyFooterGeoShape />
+                  </Suspense>
+                ) : (
+                  <div className="relative w-9 h-9">
+                    <div className="absolute inset-0 border border-blue-500/30 rounded-full animate-spin-slow" />
+                    <div className="absolute inset-1 border border-teal-500/30 rounded-full animate-spin-slow" style={{ animationDirection: 'reverse', animationDuration: '15s' }} />
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                 <Zap className="w-3 h-3 text-green-500" />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useInView } from '@/hooks/useInView';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ChevronLeft, ChevronRight, Quote } from 'lucide-react';
 
 const testimonials = [
@@ -36,7 +37,9 @@ const testimonials = [
 const TestimonialsSection: React.FC = () => {
   const [current, setCurrent] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const { ref, isInView } = useInView();
+  const isMobile = useIsMobile();
 
   const goTo = useCallback((index: number) => {
     if (isAnimating) return;
@@ -59,6 +62,21 @@ const TestimonialsSection: React.FC = () => {
     const timer = setInterval(next, 6000);
     return () => clearInterval(timer);
   }, [isInView, next]);
+
+  const handleCardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isMobile) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setTilt({
+      x: (0.5 - y) * 4,
+      y: (x - 0.5) * 6,
+    });
+  };
+
+  const handleCardMouseLeave = () => {
+    setTilt({ x: 0, y: 0 });
+  };
 
   return (
     <section className="relative py-24 sm:py-32 bg-white dark:bg-[#0A1929] overflow-hidden">
@@ -94,8 +112,17 @@ const TestimonialsSection: React.FC = () => {
           className={`relative transition-all duration-700 delay-300 ${
             isInView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
           }`}
+          onMouseMove={handleCardMouseMove}
+          onMouseLeave={handleCardMouseLeave}
         >
-          <div className="relative overflow-hidden rounded-2xl bg-slate-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 p-8 sm:p-12 min-h-[300px]">
+          <div
+            className="relative overflow-hidden rounded-2xl bg-slate-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 p-8 sm:p-12 min-h-[300px] transition-transform duration-300 will-change-transform"
+            style={
+              isMobile
+                ? undefined
+                : { transform: `perspective(1200px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }
+            }
+          >
             {/* Large quote mark */}
             <div className="absolute top-6 left-8 opacity-5">
               <Quote className="w-24 h-24" />

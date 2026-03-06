@@ -80,6 +80,10 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgba(59, 130, 246, 0.07), transparent 42%),
+      radial-gradient(circle at 82% 84%, rgba(45, 212, 191, 0.06), transparent 45%);
+    background-attachment: fixed;
   }
   pre, code {
     @apply font-mono;
@@ -373,4 +377,69 @@
   outline: 2px solid #3B82F6;
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Custom cursor */
+.custom-cursor-ring,
+.custom-cursor-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: opacity 0.2s ease-out;
+}
+
+.custom-cursor-ring {
+  width: 34px;
+  height: 34px;
+  margin-left: -17px;
+  margin-top: -17px;
+  border-radius: 9999px;
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.25), inset 0 0 20px rgba(59, 130, 246, 0.08);
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.1), transparent 70%);
+}
+
+.custom-cursor-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #3B82F6, #2DD4BF);
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.45);
+}
+
+.custom-cursor-ring.is-visible,
+.custom-cursor-dot.is-visible {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .custom-cursor-enabled,
+  .custom-cursor-enabled body,
+  .custom-cursor-enabled a,
+  .custom-cursor-enabled button,
+  .custom-cursor-enabled input,
+  .custom-cursor-enabled textarea,
+  .custom-cursor-enabled select,
+  .custom-cursor-enabled label {
+    cursor: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
