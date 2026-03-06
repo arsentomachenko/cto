@@ -63,7 +63,7 @@ const Footer: React.FC = () => {
                 <div className="absolute inset-1 border border-teal-500/30 rounded-md animate-spin-slow" style={{ animationDirection: 'reverse', animationDuration: '15s' }} />
                 <div className="absolute inset-2 bg-blue-500/20 rounded-sm animate-pulse" />
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                 <Zap className="w-3 h-3 text-green-500" />
                 <span>Load time: &lt;0.5s</span>
                 <span className="mx-1">|</span>

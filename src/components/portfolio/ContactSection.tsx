@@ -78,9 +78,9 @@ const ContactSection: React.FC = () => {
         title: 'Message sent successfully!',
         description: data?.message || "I'll get back to you within 24 hours with 3 actionable insights.",
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus('error');
-      const message = err?.message || 'Something went wrong. Please try again.';
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
       toast({
         title: 'Submission failed',
         description: message,
@@ -182,7 +182,7 @@ const ContactSection: React.FC = () => {
                 Prefer email? Reach me directly at{' '}
                 <a
                   href="mailto:jamescampbell0195@gmail.com"
-                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium break-all sm:break-normal"
                 >
                   jamescampbell0195@gmail.com
                 </a>

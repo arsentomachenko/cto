@@ -83,15 +83,15 @@ const CaseStudiesSection: React.FC = () => {
             return (
               <div
                 key={i}
-                className={`flip-card h-[480px] transition-all duration-700 ${
+                className={`flip-card h-auto md:h-[480px] transition-all duration-700 ${
                   gridVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
                 }`}
                 style={{ transitionDelay: gridVisible ? `${i * 150}ms` : '0ms' }}
               >
                 <div className="flip-card-inner relative w-full h-full">
                   {/* Front */}
-                  <div className="flip-card-front absolute inset-0 rounded-2xl bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 p-8 flex flex-col items-center justify-center text-center shadow-lg">
-                    <div className={`w-20 h-20 rounded-2xl ${study.bg} flex items-center justify-center mb-6`}>
+                  <div className="flip-card-front relative md:absolute md:inset-0 rounded-2xl bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 p-6 sm:p-8 flex flex-col items-center justify-center text-center shadow-lg">
+                    <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl ${study.bg} flex items-center justify-center mb-6`}>
                       <Icon className="w-10 h-10 text-blue-500" />
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
@@ -116,14 +116,14 @@ const CaseStudiesSection: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="mt-6 flex items-center gap-1 text-sm text-gray-400 dark:text-gray-500">
+                    <div className="mt-6 hidden md:flex items-center gap-1 text-sm text-gray-400 dark:text-gray-500">
                       <span>Hover to see results</span>
                       <ArrowUpRight className="w-3 h-3" />
                     </div>
                   </div>
 
                   {/* Back */}
-                  <div className={`flip-card-back absolute inset-0 rounded-2xl bg-gradient-to-br ${study.gradient} p-8 flex flex-col justify-center shadow-xl`}>
+                  <div className={`flip-card-back relative md:absolute md:inset-0 rounded-2xl bg-gradient-to-br ${study.gradient} p-6 sm:p-8 flex flex-col justify-center shadow-xl`}>
                     <h3 className="text-xl font-bold text-white mb-2">{study.title}</h3>
                     <p className="text-white/70 text-sm mb-8">{study.subtitle}</p>
 

@@ -230,7 +230,7 @@ const HeroSection: React.FC = () => {
       </div>
 
       {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce-gentle">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center gap-2 animate-bounce-gentle">
         <span className="text-xs text-gray-400 dark:text-gray-500">Scroll to explore</span>
         <div className="w-6 h-10 rounded-full border-2 border-gray-300 dark:border-gray-600 flex justify-center pt-2">
           <div className="w-1.5 h-3 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" />

@@ -200,9 +200,9 @@ const AIEdgeSection: React.FC = () => {
               toolVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
-            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-to-r from-blue-50 to-teal-50 dark:from-blue-500/10 dark:to-teal-500/10 border border-blue-100 dark:border-blue-500/20">
-              <Zap className="w-5 h-5 text-blue-500" />
-              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+            <div className="inline-flex max-w-3xl flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 px-4 sm:px-6 py-3 rounded-2xl sm:rounded-full bg-gradient-to-r from-blue-50 to-teal-50 dark:from-blue-500/10 dark:to-teal-500/10 border border-blue-100 dark:border-blue-500/20 text-left sm:text-center">
+              <Zap className="w-5 h-5 text-blue-500 shrink-0" />
+              <span className="text-sm font-semibold text-gray-900 dark:text-white leading-relaxed">
                 Delivered <span className="text-blue-600 dark:text-blue-400">12+ projects</span> with{' '}
                 <span className="text-teal-600 dark:text-teal-400">40-60% faster timelines</span> using AI augmentation
               </span>
