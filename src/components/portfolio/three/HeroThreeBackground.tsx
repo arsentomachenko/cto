@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { AdaptiveDpr, Float } from '@react-three/drei';
 import * as THREE from 'three';
@@ -8,219 +8,530 @@ interface HeroThreeBackgroundProps {
   complexity: number;
 }
 
-interface NodeState {
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  phase: number;
+type PlanetSurface = 'rocky' | 'gas' | 'ice';
+
+interface PlanetSpec {
+  id: string;
+  size: number;
+  orbitRadius: number;
+  orbitSpeed: number;
+  rotationSpeed: number;
+  axialTilt?: number;
+  surface: PlanetSurface;
+  colors: [string, string, string?];
+  ring?: boolean;
+  moon?: {
+    size: number;
+    orbitRadius: number;
+    orbitSpeed: number;
+    color: string;
+  };
 }
 
-const NODE_CAP = 140;
-const LINE_CAP = 420;
+interface PlanetTextures {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+  roughnessMap: THREE.CanvasTexture;
+}
 
-const NetworkField: React.FC<{ complexity: number }> = ({ complexity }) => {
-  const groupRef = useRef<THREE.Group>(null);
-  const pointsAttributeRef = useRef<THREE.BufferAttribute>(null);
-  const linesGeometryRef = useRef<THREE.BufferGeometry>(null);
-  const linesAttributeRef = useRef<THREE.BufferAttribute>(null);
+const PLANETS: PlanetSpec[] = [
+  {
+    id: 'mercury',
+    size: 0.16,
+    orbitRadius: 2.2,
+    orbitSpeed: 1.35,
+    rotationSpeed: 0.7,
+    surface: 'rocky',
+    colors: ['#8f8f8f', '#606060', '#b9b9b9'],
+  },
+  {
+    id: 'venus',
+    size: 0.24,
+    orbitRadius: 3.2,
+    orbitSpeed: 1,
+    rotationSpeed: 0.35,
+    surface: 'gas',
+    colors: ['#f4c98f', '#bd7d4c', '#edb674'],
+  },
+  {
+    id: 'earth',
+    size: 0.26,
+    orbitRadius: 4.35,
+    orbitSpeed: 0.84,
+    rotationSpeed: 1.25,
+    axialTilt: 0.32,
+    surface: 'ice',
+    colors: ['#2f74d0', '#2aa179', '#d5ecff'],
+    moon: {
+      size: 0.08,
+      orbitRadius: 0.46,
+      orbitSpeed: 2.4,
+      color: '#c8ccd2',
+    },
+  },
+  {
+    id: 'mars',
+    size: 0.2,
+    orbitRadius: 5.5,
+    orbitSpeed: 0.67,
+    rotationSpeed: 1.05,
+    surface: 'rocky',
+    colors: ['#d46b3d', '#8f3d2a', '#ef9b6f'],
+  },
+  {
+    id: 'jupiter',
+    size: 0.66,
+    orbitRadius: 7.7,
+    orbitSpeed: 0.34,
+    rotationSpeed: 1.6,
+    surface: 'gas',
+    colors: ['#e6bd96', '#a87355', '#f6d2b0'],
+  },
+  {
+    id: 'saturn',
+    size: 0.58,
+    orbitRadius: 10.1,
+    orbitSpeed: 0.26,
+    rotationSpeed: 1.35,
+    surface: 'gas',
+    colors: ['#dfc67f', '#a88a4d', '#f3e0b0'],
+    ring: true,
+  },
+];
 
-  const nodes = useMemo<NodeState[]>(() => {
-    const initial: NodeState[] = [];
-    for (let i = 0; i < NODE_CAP; i += 1) {
-      const radius = 0.6 + Math.random() * 2.7;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const position = new THREE.Vector3(
-        radius * Math.sin(phi) * Math.cos(theta),
-        radius * Math.sin(phi) * Math.sin(theta) * 0.78,
-        radius * Math.cos(phi) * 0.45
-      );
-      const velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 0.008,
-        (Math.random() - 0.5) * 0.008,
-        (Math.random() - 0.5) * 0.004
-      );
-      initial.push({
-        position,
-        velocity,
-        phase: Math.random() * Math.PI * 2,
-      });
-    }
-    return initial;
-  }, []);
+function hashString(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash >>> 0;
+}
 
-  const pointPositions = useMemo(() => {
-    const arr = new Float32Array(NODE_CAP * 3);
-    for (let i = 0; i < NODE_CAP; i += 1) {
-      arr[i * 3] = nodes[i].position.x;
-      arr[i * 3 + 1] = nodes[i].position.y;
-      arr[i * 3 + 2] = nodes[i].position.z;
-    }
-    return arr;
-  }, [nodes]);
+function mulberry32(seed: number) {
+  let t = seed;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-  const linePositions = useMemo(() => new Float32Array(LINE_CAP * 6), []);
+function makeCanvasTexture(
+  width: number,
+  height: number,
+  draw: (ctx: CanvasRenderingContext2D, rand: () => number) => void,
+  seed: number,
+  color: boolean = true
+) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
 
-  const bounds = useMemo(() => new THREE.Vector3(3.4, 2.2, 1.5), []);
-  const centerPull = useMemo(() => new THREE.Vector3(), []);
-  const scratch = useMemo(() => new THREE.Vector3(), []);
+  if (!ctx) {
+    throw new Error('Unable to get canvas context for texture generation');
+  }
 
-  useFrame((state, delta) => {
-    const elapsed = state.clock.getElapsedTime();
-    const activeCount = Math.min(NODE_CAP, Math.floor(38 + complexity * 26));
-    const threshold = 1.05 + complexity * 0.28;
-    const thresholdSq = threshold * threshold;
-    const pointerInfluence = 0.55 + complexity * 0.15;
+  draw(ctx, mulberry32(seed));
+  const texture = new THREE.CanvasTexture(canvas);
+  if (color) {
+    texture.colorSpace = THREE.SRGBColorSpace;
+  }
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+}
 
-    const pointerX = state.pointer.x * 1.7;
-    const pointerY = state.pointer.y * 1.1;
+function buildPlanetTextures(spec: PlanetSpec): PlanetTextures {
+  const width = 512;
+  const height = 256;
+  const seedBase = hashString(spec.id);
 
-    for (let i = 0; i < activeCount; i += 1) {
-      const node = nodes[i];
+  const map = makeCanvasTexture(
+    width,
+    height,
+    (ctx, rand) => {
+      const [a, b, c] = spec.colors;
+      const bg = ctx.createLinearGradient(0, 0, 0, height);
+      bg.addColorStop(0, a);
+      bg.addColorStop(0.5, b);
+      bg.addColorStop(1, c || a);
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
 
-      node.velocity.x += (pointerX - node.position.x) * 0.00045 * pointerInfluence;
-      node.velocity.y += (pointerY - node.position.y) * 0.00033 * pointerInfluence;
-      node.velocity.z += Math.sin(elapsed * 0.6 + node.phase) * 0.00008;
+      if (spec.surface === 'gas') {
+        for (let i = 0; i < 50; i += 1) {
+          const y = rand() * height;
+          const bandHeight = 4 + rand() * 14;
+          const opacity = 0.06 + rand() * 0.18;
+          ctx.fillStyle = `rgba(255,255,255,${opacity.toFixed(3)})`;
+          ctx.fillRect(0, y, width, bandHeight);
+        }
 
-      centerPull.copy(node.position).multiplyScalar(-0.00075);
-      node.velocity.add(centerPull);
-      node.velocity.multiplyScalar(0.986);
-      node.velocity.clampLength(0.0004, 0.03);
-      node.position.addScaledVector(node.velocity, delta * 60);
-
-      node.position.x += Math.sin(elapsed * 0.28 + node.phase) * 0.0017;
-      node.position.y += Math.cos(elapsed * 0.34 + node.phase * 1.3) * 0.0015;
-
-      if (Math.abs(node.position.x) > bounds.x) node.velocity.x *= -0.95;
-      if (Math.abs(node.position.y) > bounds.y) node.velocity.y *= -0.95;
-      if (Math.abs(node.position.z) > bounds.z) node.velocity.z *= -0.95;
-
-      node.position.x = THREE.MathUtils.clamp(node.position.x, -bounds.x, bounds.x);
-      node.position.y = THREE.MathUtils.clamp(node.position.y, -bounds.y, bounds.y);
-      node.position.z = THREE.MathUtils.clamp(node.position.z, -bounds.z, bounds.z);
-
-      pointPositions[i * 3] = node.position.x;
-      pointPositions[i * 3 + 1] = node.position.y;
-      pointPositions[i * 3 + 2] = node.position.z;
-    }
-
-    if (pointsAttributeRef.current) {
-      pointsAttributeRef.current.needsUpdate = true;
-    }
-
-    let lineCount = 0;
-    for (let i = 0; i < activeCount && lineCount < LINE_CAP; i += 1) {
-      const a = nodes[i];
-      for (let j = i + 1; j < activeCount && lineCount < LINE_CAP; j += 1) {
-        const b = nodes[j];
-        const distSq = a.position.distanceToSquared(b.position);
-
-        if (distSq < thresholdSq) {
-          const offset = lineCount * 6;
-          linePositions[offset] = a.position.x;
-          linePositions[offset + 1] = a.position.y;
-          linePositions[offset + 2] = a.position.z;
-          linePositions[offset + 3] = b.position.x;
-          linePositions[offset + 4] = b.position.y;
-          linePositions[offset + 5] = b.position.z;
-          lineCount += 1;
+        for (let i = 0; i < 25; i += 1) {
+          const y = rand() * height;
+          const w = width * (0.2 + rand() * 0.35);
+          const h = height * (0.02 + rand() * 0.08);
+          ctx.fillStyle = `rgba(255,255,255,${(0.05 + rand() * 0.1).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.ellipse(rand() * width, y, w, h, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
-    }
 
-    if (linesGeometryRef.current) {
-      linesGeometryRef.current.setDrawRange(0, lineCount * 2);
-    }
+      if (spec.surface === 'rocky' || spec.surface === 'ice') {
+        for (let i = 0; i < 900; i += 1) {
+          const x = rand() * width;
+          const y = rand() * height;
+          const alpha = spec.surface === 'ice' ? 0.18 : 0.12;
+          ctx.fillStyle = `rgba(255,255,255,${(alpha * rand()).toFixed(3)})`;
+          const radius = rand() * 2.2;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
-    if (linesAttributeRef.current) {
-      linesAttributeRef.current.needsUpdate = true;
-    }
+        for (let i = 0; i < 70; i += 1) {
+          const x = rand() * width;
+          const y = rand() * height;
+          const radius = 2 + rand() * 12;
+          ctx.strokeStyle = `rgba(0,0,0,${(0.04 + rand() * 0.12).toFixed(3)})`;
+          ctx.lineWidth = 1 + rand() * 1.5;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    },
+    seedBase + 101,
+    true
+  );
 
-    if (groupRef.current) {
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(
-        groupRef.current.rotation.y,
-        state.pointer.x * 0.22 + elapsed * 0.025,
-        0.03
+  const bumpMap = makeCanvasTexture(
+    width,
+    height,
+    (ctx, rand) => {
+      const img = ctx.createImageData(width, height);
+      const data = img.data;
+
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const i = (y * width + x) * 4;
+          const horiz = Math.sin((x / width) * Math.PI * (spec.surface === 'gas' ? 28 : 12));
+          const noise = rand() * 0.55;
+          const value = Math.floor((0.45 + horiz * 0.2 + noise * 0.35) * 255);
+          data[i] = value;
+          data[i + 1] = value;
+          data[i + 2] = value;
+          data[i + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(img, 0, 0);
+    },
+    seedBase + 202,
+    false
+  );
+
+  const roughnessMap = makeCanvasTexture(
+    width,
+    height,
+    (ctx, rand) => {
+      const img = ctx.createImageData(width, height);
+      const data = img.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const value = Math.floor((0.55 + rand() * 0.45) * 255);
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+        data[i + 3] = 255;
+      }
+
+      ctx.putImageData(img, 0, 0);
+    },
+    seedBase + 303,
+    false
+  );
+
+  return { map, bumpMap, roughnessMap };
+}
+
+function buildRingTexture(seed: number) {
+  return makeCanvasTexture(
+    1024,
+    128,
+    (ctx, rand) => {
+      ctx.clearRect(0, 0, 1024, 128);
+
+      for (let x = 0; x < 1024; x += 1) {
+        const norm = x / 1024;
+        const fade = Math.sin(norm * Math.PI);
+        const alpha = Math.max(0.02, fade * (0.35 + rand() * 0.45));
+        const tone = 180 + Math.floor(rand() * 60);
+        ctx.fillStyle = `rgba(${tone}, ${tone}, ${Math.min(255, tone + 20)}, ${alpha.toFixed(3)})`;
+        ctx.fillRect(x, 0, 1, 128);
+      }
+
+      for (let i = 0; i < 120; i += 1) {
+        const x = rand() * 1024;
+        const w = 2 + rand() * 6;
+        ctx.fillStyle = `rgba(255,255,255,${(0.03 + rand() * 0.08).toFixed(3)})`;
+        ctx.fillRect(x, 0, w, 128);
+      }
+    },
+    seed,
+    true
+  );
+}
+
+const OrbitPath: React.FC<{ radius: number }> = ({ radius }) => {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[radius - 0.012, radius + 0.012, 192]} />
+      <meshBasicMaterial color="#5ea7ff" transparent opacity={0.16} side={THREE.DoubleSide} />
+    </mesh>
+  );
+};
+
+const OrbitingPlanet: React.FC<{
+  spec: PlanetSpec;
+  speedMultiplier: number;
+  phaseOffset: number;
+}> = ({ spec, speedMultiplier, phaseOffset }) => {
+  const orbitRef = useRef<THREE.Group>(null);
+  const planetRef = useRef<THREE.Mesh>(null);
+  const moonOrbitRef = useRef<THREE.Group>(null);
+  const angleRef = useRef(phaseOffset);
+  const moonAngleRef = useRef(phaseOffset * 2.5);
+
+  const textures = useMemo(() => buildPlanetTextures(spec), [spec]);
+  const ringTexture = useMemo(
+    () => (spec.ring ? buildRingTexture(hashString(`${spec.id}-ring`)) : null),
+    [spec.id, spec.ring]
+  );
+
+  useEffect(() => {
+    return () => {
+      textures.map.dispose();
+      textures.bumpMap.dispose();
+      textures.roughnessMap.dispose();
+      ringTexture?.dispose();
+    };
+  }, [textures, ringTexture]);
+
+  useFrame((_, delta) => {
+    angleRef.current += delta * spec.orbitSpeed * speedMultiplier;
+
+    if (orbitRef.current) {
+      orbitRef.current.position.set(
+        Math.cos(angleRef.current) * spec.orbitRadius,
+        Math.sin(angleRef.current * 0.7 + phaseOffset) * 0.08,
+        Math.sin(angleRef.current) * spec.orbitRadius
       );
-      groupRef.current.rotation.x = THREE.MathUtils.lerp(
-        groupRef.current.rotation.x,
-        -state.pointer.y * 0.13,
-        0.03
-      );
     }
 
-    state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, state.pointer.x * 0.45, 0.04);
-    state.camera.position.y = THREE.MathUtils.lerp(state.camera.position.y, state.pointer.y * 0.3, 0.04);
-    state.camera.lookAt(0, 0, 0);
+    if (planetRef.current) {
+      planetRef.current.rotation.y += delta * spec.rotationSpeed;
+      planetRef.current.rotation.z = spec.axialTilt || 0;
+    }
 
-    if (groupRef.current) {
-      scratch.set(0, 0, -1.8);
-      scratch.applyEuler(groupRef.current.rotation);
+    if (spec.moon && moonOrbitRef.current) {
+      moonAngleRef.current += delta * spec.moon.orbitSpeed * speedMultiplier;
+      moonOrbitRef.current.position.set(
+        Math.cos(moonAngleRef.current) * spec.moon.orbitRadius,
+        Math.sin(moonAngleRef.current * 1.2) * 0.03,
+        Math.sin(moonAngleRef.current) * spec.moon.orbitRadius
+      );
     }
   });
 
   return (
-    <group ref={groupRef}>
-      <points>
-        <bufferGeometry>
-          <bufferAttribute
-            ref={pointsAttributeRef}
-            attach="attributes-position"
-            array={pointPositions}
-            count={pointPositions.length / 3}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <pointsMaterial
-          color="#8cc8ff"
-          size={0.04 + complexity * 0.008}
-          sizeAttenuation
-          transparent
-          opacity={0.95}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
+    <>
+      <OrbitPath radius={spec.orbitRadius} />
+
+      <group ref={orbitRef}>
+        <Float speed={1.2} rotationIntensity={0.18} floatIntensity={0.14}>
+          <mesh ref={planetRef}>
+            <sphereGeometry args={[spec.size, 64, 64]} />
+            <meshStandardMaterial
+              map={textures.map}
+              bumpMap={textures.bumpMap}
+              bumpScale={spec.surface === 'gas' ? 0.02 : 0.06}
+              roughnessMap={textures.roughnessMap}
+              roughness={spec.surface === 'gas' ? 0.75 : 0.88}
+              metalness={0.03}
+            />
+          </mesh>
+
+          {spec.ring && ringTexture && (
+            <mesh rotation={[Math.PI / 2.4, 0, 0]}>
+              <ringGeometry args={[spec.size * 1.5, spec.size * 2.5, 160]} />
+              <meshStandardMaterial
+                map={ringTexture}
+                color="#c7b188"
+                emissive="#8d7f66"
+                emissiveIntensity={0.08}
+                transparent
+                opacity={0.8}
+                side={THREE.DoubleSide}
+                roughness={0.9}
+                metalness={0.05}
+                alphaTest={0.07}
+              />
+            </mesh>
+          )}
+
+          {spec.moon && (
+            <>
+              <group ref={moonOrbitRef}>
+                <mesh>
+                  <sphereGeometry args={[spec.moon.size, 30, 30]} />
+                  <meshStandardMaterial color={spec.moon.color} roughness={0.9} metalness={0.02} />
+                </mesh>
+              </group>
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry
+                  args={[
+                    spec.moon.orbitRadius - 0.002,
+                    spec.moon.orbitRadius + 0.002,
+                    96,
+                  ]}
+                />
+                <meshBasicMaterial color="#9fb7da" transparent opacity={0.2} side={THREE.DoubleSide} />
+              </mesh>
+            </>
+          )}
+        </Float>
+      </group>
+    </>
+  );
+};
+
+const Starfield: React.FC<{ count: number; radius: number; color: string; size: number }> = ({
+  count,
+  radius,
+  color,
+  size,
+}) => {
+  const positions = useMemo(() => {
+    const arr = new Float32Array(count * 3);
+    const rand = mulberry32(hashString(`${count}-${radius}-${color}-${size}`));
+
+    for (let i = 0; i < count; i += 1) {
+      const u = rand();
+      const v = rand();
+      const theta = u * Math.PI * 2;
+      const phi = Math.acos(2 * v - 1);
+      const r = radius * (0.65 + rand() * 0.35);
+
+      arr[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      arr[i * 3 + 2] = r * Math.cos(phi);
+    }
+
+    return arr;
+  }, [count, radius, color, size]);
+
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" array={positions} count={positions.length / 3} itemSize={3} />
+      </bufferGeometry>
+      <pointsMaterial color={color} size={size} sizeAttenuation transparent opacity={0.9} depthWrite={false} />
+    </points>
+  );
+};
+
+const AsteroidBelt: React.FC<{ density: number }> = ({ density }) => {
+  const positions = useMemo(() => {
+    const count = Math.floor(220 + density * 140);
+    const arr = new Float32Array(count * 3);
+    const rand = mulberry32(hashString(`asteroids-${density}`));
+
+    for (let i = 0; i < count; i += 1) {
+      const angle = rand() * Math.PI * 2;
+      const r = 6.35 + (rand() - 0.5) * 0.95;
+      arr[i * 3] = Math.cos(angle) * r;
+      arr[i * 3 + 1] = (rand() - 0.5) * 0.25;
+      arr[i * 3 + 2] = Math.sin(angle) * r;
+    }
+
+    return arr;
+  }, [density]);
+
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" array={positions} count={positions.length / 3} itemSize={3} />
+      </bufferGeometry>
+      <pointsMaterial color="#ba9f7a" size={0.017} sizeAttenuation opacity={0.85} transparent />
+    </points>
+  );
+};
+
+const SolarSystem: React.FC<{ complexity: number }> = ({ complexity }) => {
+  const rootRef = useRef<THREE.Group>(null);
+  const normalizedComplexity = THREE.MathUtils.clamp((complexity - 1) / 3, 0, 1);
+  const speedMultiplier = 0.45 + normalizedComplexity * 0.9;
+
+  useFrame((state) => {
+    const elapsed = state.clock.getElapsedTime();
+
+    if (rootRef.current) {
+      rootRef.current.rotation.y = THREE.MathUtils.lerp(
+        rootRef.current.rotation.y,
+        state.pointer.x * 0.22 + elapsed * 0.015,
+        0.03
+      );
+      rootRef.current.rotation.x = THREE.MathUtils.lerp(
+        rootRef.current.rotation.x,
+        -0.06 + state.pointer.y * 0.08,
+        0.03
+      );
+    }
+
+    state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, state.pointer.x * 1.15, 0.035);
+    state.camera.position.y = THREE.MathUtils.lerp(state.camera.position.y, 1.4 + state.pointer.y * 0.55, 0.035);
+    state.camera.lookAt(0, 0, 0);
+  });
+
+  return (
+    <group ref={rootRef}>
+      <Starfield count={700} radius={45} color="#9ec7ff" size={0.06} />
+      <Starfield count={350} radius={35} color="#d7efff" size={0.045} />
+
+      <mesh>
+        <sphereGeometry args={[1.05, 96, 96]} />
+        <meshStandardMaterial
+          color="#ffbb44"
+          emissive="#ff6e1c"
+          emissiveIntensity={2.1}
+          roughness={0.72}
+          metalness={0.02}
         />
-      </points>
-
-      <lineSegments>
-        <bufferGeometry ref={linesGeometryRef}>
-          <bufferAttribute
-            ref={linesAttributeRef}
-            attach="attributes-position"
-            array={linePositions}
-            count={linePositions.length / 3}
-            itemSize={3}
-            usage={THREE.DynamicDrawUsage}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial color="#2DD4BF" transparent opacity={0.28} blending={THREE.AdditiveBlending} />
-      </lineSegments>
-
-      <Float speed={1.3} rotationIntensity={0.25} floatIntensity={0.35}>
-        <mesh position={[1.95, 0.75, -0.85]}>
-          <icosahedronGeometry args={[0.26, 1]} />
-          <meshPhysicalMaterial
-            color="#3B82F6"
-            emissive="#3B82F6"
-            emissiveIntensity={0.35}
-            metalness={0.55}
-            roughness={0.25}
-            clearcoat={1}
-            clearcoatRoughness={0.2}
-          />
-        </mesh>
-      </Float>
-
-      <Float speed={1.1} rotationIntensity={0.18} floatIntensity={0.28}>
-        <mesh position={[-2.05, -0.55, -1.1]} rotation={[0.5, 0, 0.35]}>
-          <torusGeometry args={[0.36, 0.07, 18, 70]} />
-          <meshStandardMaterial color="#2DD4BF" emissive="#2DD4BF" emissiveIntensity={0.22} metalness={0.48} roughness={0.3} />
-        </mesh>
-      </Float>
-
-      <mesh position={[0, 0, -2.1]} rotation={[Math.PI * 0.3, Math.PI * 0.15, 0]}>
-        <torusGeometry args={[1.48, 0.018, 16, 160]} />
-        <meshBasicMaterial color="#3B82F6" transparent opacity={0.24} blending={THREE.AdditiveBlending} />
       </mesh>
+
+      <mesh scale={1.18}>
+        <sphereGeometry args={[1.05, 64, 64]} />
+        <meshBasicMaterial color="#ffb155" transparent opacity={0.12} side={THREE.BackSide} />
+      </mesh>
+
+      <pointLight color="#ffbe55" intensity={12 + normalizedComplexity * 5} distance={48} decay={2} />
+
+      <AsteroidBelt density={normalizedComplexity} />
+
+      {PLANETS.map((planet, index) => (
+        <OrbitingPlanet
+          key={planet.id}
+          spec={planet}
+          speedMultiplier={speedMultiplier}
+          phaseOffset={index * 0.72 + 0.5}
+        />
+      ))}
     </group>
   );
 };
@@ -234,15 +545,14 @@ const HeroThreeBackground: React.FC<HeroThreeBackgroundProps> = ({ complexity })
         <Canvas
           dpr={[1, 1.8]}
           gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-          camera={{ position: [0, 0, 4.9], fov: 40 }}
+          camera={{ position: [0, 1.4, 14.2], fov: 38 }}
           style={{ pointerEvents: 'none' }}
         >
           <AdaptiveDpr pixelated />
-          <ambientLight intensity={0.25} />
-          <hemisphereLight color="#9ad0ff" groundColor="#0f172a" intensity={0.4} />
-          <pointLight position={[3.8, 2.8, 4.2]} color="#3B82F6" intensity={2.2} />
-          <pointLight position={[-3, -2, 2.8]} color="#2DD4BF" intensity={1.5} />
-          <NetworkField complexity={complexity} />
+          <ambientLight intensity={0.16} color="#7aa7dd" />
+          <hemisphereLight color="#9fc7ff" groundColor="#09121f" intensity={0.33} />
+          <directionalLight position={[-8, 3, 4]} color="#7ca4d9" intensity={0.26} />
+          <SolarSystem complexity={complexity} />
         </Canvas>
       </ThreeErrorBoundary>
     </div>
